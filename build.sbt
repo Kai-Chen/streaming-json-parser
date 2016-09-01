@@ -1,5 +1,5 @@
 name := "streaming-json-parser"
-organization := "Sorrento Consulting Corporation"
+organization := "com.sorrentocorp"
 scalaVersion := "2.11.8"
 scalacOptions ++= Seq("-feature", "-deprecation")
 val akkaVersion = "2.4.8"
