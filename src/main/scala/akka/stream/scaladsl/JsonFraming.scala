@@ -39,37 +39,75 @@ object JsonFraming {
    * @param maximumObjectLength The maximum length of allowed frames while decoding. If the maximum length is exceeded
    *                            this Flow will fail the stream.
    */
+  sealed trait State
+  case object INITIAL extends State
+  case object MATCHED_OPEN_BRACE extends State
+  case object MATCHED_RESULT extends State
+
   def objectScanner(maximumObjectLength: Int): Flow[ByteString, ByteString, NotUsed] =
     Flow[ByteString].via(new SimpleLinearGraphStage[ByteString] {
 
       override protected def initialAttributes: Attributes = Attributes.name("JsonFraming.objectScanner")
 
       override def createLogic(inheritedAttributes: Attributes) = new GraphStageLogic(shape) with InHandler with OutHandler {
+        private var state: State = INITIAL
+        private var tmp: ByteString = ByteString.empty
+
         private val buffer = new JsonObjectParser(maximumObjectLength)
 
         setHandlers(in, out, this)
 
         override def onPush(): Unit = {
-          buffer.offer(grab(in))
+          println("pushed")
+          val curr = grab(in)
+
+          state match {
+            case INITIAL => tmp ++= curr
+            case _ => buffer.offer(curr)
+          }
+
           tryPopBuffer()
         }
 
-        override def onPull(): Unit =
+        override def onPull(): Unit = {
+          println("pulled")
           tryPopBuffer()
+        }
 
         override def onUpstreamFinish(): Unit = {
+          println("upstream completed")
           buffer.poll() match {
             case Some(json) ⇒ emit(out, json)
             case _          ⇒ completeStage()
           }
         }
 
-        def tryPopBuffer() = {
-          try buffer.poll() match {
-            case Some(json) ⇒ push(out, json)
-            case _          ⇒ if (isClosed(in)) completeStage() else pull(in)
-          } catch {
-            case NonFatal(ex) ⇒ failStage(ex)
+        def tryPopBuffer(): Unit = {
+          println(s"state is $state")
+          state match {
+            case INITIAL =>
+              val buf = tmp.dropWhile(JsonObjectParser.isWhitespace(_))
+              if (!buf.isEmpty) {
+                buf(0) match {
+                  case '{' =>
+                    println("matched '{'")
+                    tmp = ByteString.empty
+                    state = MATCHED_OPEN_BRACE
+                    buffer.offer(buf.drop(11))
+                    tryPopBuffer()
+                  case _ =>
+                    failStage(new IllegalArgumentException(s"expected '{' but found ${buf(0)}"))
+                }
+              } else {
+                pull(in)
+              }
+            case _ =>
+              try buffer.poll() match {
+                case Some(json) ⇒ push(out, json)
+                case _          ⇒ if (isClosed(in)) completeStage() else pull(in)
+              } catch {
+                case NonFatal(ex) ⇒ failStage(ex)
+              }
           }
         }
       }
