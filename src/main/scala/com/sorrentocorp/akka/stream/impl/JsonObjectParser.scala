@@ -1,17 +1,14 @@
 /**
  * Copyright (C) 2014-2015 Typesafe Inc. <http://www.typesafe.com>
  */
-package akka.stream.impl
+package com.sorrentocorp.akka.stream.impl
 
 import akka.stream.scaladsl.Framing.FramingException
 import akka.util.ByteString
 
 import scala.annotation.switch
 
-/**
- * INTERNAL API: Use [[akka.stream.scaladsl.JsonFraming]] instead.
- */
-private[akka] object JsonObjectParser {
+object JsonObjectParser {
 
   final val SquareBraceStart = '['.toByte
   final val SquareBraceEnd = ']'.toByte
@@ -42,7 +39,7 @@ private[akka] object JsonObjectParser {
  *
  * Leading whitespace between elements will be trimmed.
  */
-private[akka] class JsonObjectParser(maximumObjectLength: Int = Int.MaxValue) {
+class JsonObjectParser(maximumObjectLength: Int = Int.MaxValue) {
   import JsonObjectParser._
 
   private var buffer: ByteString = ByteString.empty

@@ -5,10 +5,11 @@ package akka.stream.scaladsl
 
 import akka.NotUsed
 import akka.stream.Attributes
-import akka.stream.impl.JsonObjectParser
 import akka.stream.impl.fusing.GraphStages.SimpleLinearGraphStage
 import akka.stream.stage.{ InHandler, OutHandler, GraphStageLogic }
 import akka.util.ByteString
+
+import com.sorrentocorp.akka.stream.impl.JsonObjectParser
 
 import scala.util.control.NonFatal
 
