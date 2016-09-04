@@ -10,8 +10,9 @@ import akka.stream.stage.{ InHandler, OutHandler, GraphStageLogic }
 import akka.util.ByteString
 
 import com.sorrentocorp.akka.stream.impl.JsonObjectParser
+import com.sorrentocorp.akka.stream.Expect
 
-import scala.util.control.NonFatal
+import scala.util._, control.NonFatal
 
 /** Provides JSON framing stages that can separate valid JSON objects from incoming [[ByteString]] objects. */
 object JsonFraming {
@@ -52,7 +53,7 @@ object JsonFraming {
 
       override def createLogic(inheritedAttributes: Attributes) = new GraphStageLogic(shape) with InHandler with OutHandler {
         private var state: State = INITIAL
-        private var tmp: ByteString = ByteString.empty
+        private val expect: Expect = new Expect(ByteString("""{"results":"""))
 
         private val buffer = new JsonObjectParser(maximumObjectLength)
 
@@ -63,7 +64,7 @@ object JsonFraming {
           val curr = grab(in)
 
           state match {
-            case INITIAL => tmp ++= curr
+            case INITIAL => expect.offer(curr)
             case _ => buffer.offer(curr)
           }
 
@@ -87,20 +88,14 @@ object JsonFraming {
           println(s"state is $state")
           state match {
             case INITIAL =>
-              val buf = tmp.dropWhile(JsonObjectParser.isWhitespace(_))
-              if (!buf.isEmpty) {
-                buf(0) match {
-                  case '{' =>
-                    println("matched '{'")
-                    tmp = ByteString.empty
-                    state = MATCHED_OPEN_BRACE
-                    buffer.offer(buf.drop(11))
-                    tryPopBuffer()
-                  case _ =>
-                    failStage(new IllegalArgumentException(s"expected '{' but found ${buf(0)}"))
-                }
-              } else {
-                pull(in)
+              expect.poll match {
+                case None => pull(in)
+                case Some(Right(rest)) =>
+                  state = MATCHED_OPEN_BRACE
+                  buffer.offer(rest)
+                  tryPopBuffer()
+                case Some(Left(str)) =>
+                  throw new IllegalArgumentException(s"Expected ${expect.prefix.utf8String}, but found ${str.utf8String}")
               }
             case _ =>
               try buffer.poll() match {
