@@ -30,23 +30,26 @@ object JsonObjectParser {
 
   /** Splits a ByteString at the first complete json array */
   def array(buf: ByteString): (ByteString, ByteString) =
-    buf.splitAt(endOfArray(buf))
+    buf.splitAt(matching(buf, OpenBracket, CloseBracket)._2)
 
-  def endOfArray(buf: ByteString, startIndex: Int = 0): Int = {
-    var arrayDepth = 0
+  /** Return a pair of indices, indicating the start and the end of a complete json array or object */
+  def matching(buf: ByteString, open: Byte, close: Byte): (Int, Int) = {
+    var depth = 0
     var inString = false
     var inEscape = false
     var found = false
 
-    var idx = startIndex - 1
+    var start = -1
+    var idx = -1
     while (buf.isDefinedAt(idx + 1) && !found) {
       idx += 1
       buf(idx) match {
         // no need to check for the char sequence '\' '[' as it is not legal in json
-        case OpenBracket if (!inString) =>
-          arrayDepth += 1
-        case CloseBracket =>
-          if (arrayDepth == 1 && !inString) found = true else arrayDepth -=1
+        case `open` if (!inString) =>
+          start = idx
+          depth += 1
+        case `close` =>
+          if (depth == 1 && !inString) found = true else depth -=1
         case DoubleQuote if (!inEscape) =>
           inString = !inString
         case Backslash =>
@@ -56,7 +59,7 @@ object JsonObjectParser {
       }
     }
 
-    if (found) idx+1 else 0
+    if (found) (start, idx+1) else (-1, 0)
   }
 }
 
