@@ -30,7 +30,18 @@ object JsonObjectParser {
 
   /** Splits a ByteString at the first complete json array */
   def array(buf: ByteString): (ByteString, ByteString) =
-    buf.splitAt(matching(buf, OpenBracket, CloseBracket)._2)
+    split(buf, OpenBracket, CloseBracket)
+
+  def obj(buf: ByteString): (ByteString, ByteString) =
+    split(buf, OpenBrace, CloseBrace)
+
+  def split(buf: ByteString, open: Byte, close: Byte): (ByteString, ByteString) = {
+    val (start, end) = matching(buf, open, close)
+    if (start == -1)
+      (ByteString.empty, buf)
+    else
+      buf.drop(start).splitAt(end - start)
+  }
 
   /** Return a pair of indices, indicating the start and the end of a complete json array or object */
   def matching(buf: ByteString, open: Byte, close: Byte): (Int, Int) = {
@@ -44,7 +55,7 @@ object JsonObjectParser {
     while (buf.isDefinedAt(idx + 1) && !found) {
       idx += 1
       buf(idx) match {
-        // no need to check for the char sequence '\' '[' as it is not legal in json
+        // no need to check for char sequence "\[" or "\{" as they are not legal in json
         case `open` if (!inString) =>
           start = idx
           depth += 1
