@@ -10,7 +10,7 @@ import akka.stream.stage.{ InHandler, OutHandler, GraphStageLogic }
 import akka.util.ByteString
 
 import com.sorrentocorp.akka.stream.impl.JsonObjectParser
-import com.sorrentocorp.akka.stream.Expect
+import com.sorrentocorp.akka.stream._
 
 import scala.util._, control.NonFatal
 
@@ -59,12 +59,14 @@ object JsonFraming {
         private val Columns = Expect("""[{"columns":""")
 
         private val buffer = new JsonObjectParser(maximumObjectLength)
+        private val lexer = new Lexer
 
         setHandlers(in, out, this)
 
         override def onPush(): Unit = {
           println("pushed")
           val curr = grab(in)
+          lexer.offer(curr)
 
           state match {
             case INITIAL => Results.offer(curr)
@@ -81,37 +83,47 @@ object JsonFraming {
 
         override def onUpstreamFinish(): Unit = {
           println("upstream completed")
-          buffer.poll() match {
-            case Some(json) ⇒ emit(out, json)
-            case _          ⇒ completeStage()
+          // buffer.poll() match {
+          //   case Some(json) ⇒ emit(out, json)
+          //   case _          ⇒ completeStage()
+          // }
+          lexer.poll match {
+            case Some(token) => emit(out, token.str)
+            case None => completeStage()
           }
         }
 
         def tryPopBuffer(): Unit = {
-          println(s"state is $state")
-          state match {
-            case INITIAL =>
-              Results.poll match {
-                case None => pull(in)
-                case Some(Right(rest)) =>
-                  state = MATCHED_RESULTS
-                  val (array, data) = JsonObjectParser.array(rest.drop(1))
-                  println(s"rest is ${rest.utf8String}")
-                  println(s"array is ${array.utf8String}")
-                  println(s"data is ${data.utf8String}")
-                  buffer.offer(data.drop(8))
-                  tryPopBuffer()
-                case Some(Left(str)) =>
-                  throw new IllegalArgumentException(s"Expected ${Results.prefix.utf8String}, but found ${str.utf8String}")
-              }
-            case _ =>
-              try buffer.poll() match {
-                case Some(json) ⇒ push(out, json)
-                case _          ⇒ if (isClosed(in)) completeStage() else pull(in)
-              } catch {
-                case NonFatal(ex) ⇒ failStage(ex)
-              }
+          try lexer.poll match {
+            case Some(token) => emit(out, token.str)
+            case None => if (isClosed(in)) completeStage() else pull(in)
+          } catch {
+            case NonFatal(ex) => failStage(ex)
           }
+
+          // state match {
+          //   case INITIAL =>
+          //     Results.poll match {
+          //       case None => pull(in)
+          //       case Some(Right(rest)) =>
+          //         state = MATCHED_RESULTS
+          //         val (array, data) = JsonObjectParser.array(rest.drop(1))
+          //         println(s"rest is ${rest.utf8String}")
+          //         println(s"array is ${array.utf8String}")
+          //         println(s"data is ${data.utf8String}")
+          //         buffer.offer(data.drop(8))
+          //         tryPopBuffer()
+          //       case Some(Left(str)) =>
+          //         throw new IllegalArgumentException(s"Expected ${Results.prefix.utf8String}, but found ${str.utf8String}")
+          //     }
+          //   case _ =>
+          //     try buffer.poll() match {
+          //       case Some(json) ⇒ push(out, json)
+          //       case _          ⇒ if (isClosed(in)) completeStage() else pull(in)
+          //     } catch {
+          //       case NonFatal(ex) ⇒ failStage(ex)
+          //     }
+          // }
         }
       }
     })
