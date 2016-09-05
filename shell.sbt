@@ -10,7 +10,7 @@ object i {
   def run(fn: String = "tx-genes-01.json") = {
     val src = FileIO.fromPath(new java.io.File(s"src/test/resources/${fn}").toPath)
 
-    src.via(Neo4jRespFraming.scanner).runForeach(x => println(x.utf8String))
+    src.via(new Neo4jRespFraming).runForeach(x => println(x))
   }
 
 }

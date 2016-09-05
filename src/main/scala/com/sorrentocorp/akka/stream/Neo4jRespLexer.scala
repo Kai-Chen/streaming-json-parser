@@ -73,12 +73,14 @@ class Neo4jRespLexer {
   case object COLUMNS extends State
   case object DATA extends State
   case object ROWS extends State
+  case object END_ROWS extends State
   case object ERRORS extends State
 
   private val Results = Expect("""{"results":""")
   private val EmptyArray = Expect("[]")
   private val Columns = Expect("""[{"columns":""")
   private val Data = Expect(""","data":[""")
+  private val EndData = Expect("""]}]""")
   private val Errors = Expect(""","errors":""")
 
   private var state: State = INITIAL
@@ -146,14 +148,31 @@ class Neo4jRespLexer {
         if (!row.isEmpty)
           Some(DataRow(row))
         else {
-          state = ERRORS
+          state = END_ROWS
           poll
         }
 
+      case END_ROWS =>
+        EndData.offer(buffer)
+        EndData.poll match {
+          case None => None
+          case Some(Left(x)) => badToken(EndData, x)
+          case Some(Right(remainder)) =>
+            buffer = remainder
+            state = ERRORS
+            poll
+        }
+
       case ERRORS =>
-        val ret = Some(ErrorObj(buffer))
-        buffer = ByteString.empty
-        ret
+        Errors.offer(buffer)
+        Errors.poll match {
+          case None => None
+          case Some(Left(x)) => badToken(Errors, x)
+          case Some(Right(remainder)) =>
+            val (err, _) = array(remainder)
+            buffer = ByteString.empty
+            Some(ErrorObj(err))
+        }
     }
 
   private def badToken(expect: Expect, input: ByteString) =
