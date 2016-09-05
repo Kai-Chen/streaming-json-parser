@@ -1,10 +1,72 @@
 package com.sorrentocorp.akka.stream
 
 import akka.util.ByteString
-import impl.JsonObjectParser
 
 /** A simple state machine to tokenize json response from neo4j server */
-class Lexer {
+class Neo4jRespLexer {
+  final val OpenBracket = '['.toByte
+  final val CloseBracket = ']'.toByte
+  final val OpenBrace = '{'.toByte
+  final val CloseBrace = '}'.toByte
+  final val DoubleQuote = '"'.toByte
+  final val Backslash = '\\'.toByte
+  final val Comma = ','.toByte
+
+  final val LineBreak = '\n'.toByte
+  final val LineBreak2 = '\r'.toByte
+  final val Tab = '\t'.toByte
+  final val Space = ' '.toByte
+
+  final val Whitespace = Set(LineBreak, LineBreak2, Tab, Space)
+
+  def isWhitespace(input: Byte): Boolean =
+    Whitespace.contains(input)
+
+  /** Splits a ByteString at the first complete json array */
+  def array(buf: ByteString): (ByteString, ByteString) =
+    split(buf, OpenBracket, CloseBracket)
+
+  def obj(buf: ByteString): (ByteString, ByteString) =
+    split(buf, OpenBrace, CloseBrace)
+
+  def split(buf: ByteString, open: Byte, close: Byte): (ByteString, ByteString) = {
+    val (start, end) = matching(buf, open, close)
+    if (start == -1)
+      (ByteString.empty, buf)
+    else
+      buf.drop(start).splitAt(end - start)
+  }
+
+  /** Return a pair of indices, indicating the start and the end of a complete json array or object */
+  def matching(buf: ByteString, open: Byte, close: Byte): (Int, Int) = {
+    var depth = 0
+    var inString = false
+    var inEscape = false
+    var found = false
+
+    var start = -1
+    var idx = -1
+    while (buf.isDefinedAt(idx + 1) && !found) {
+      idx += 1
+      buf(idx) match {
+        // no need to check for char sequence "\[" or "\{" as they are not legal in json
+        case `open` if (!inString) =>
+          start = idx
+          depth += 1
+        case `close` =>
+          if (depth == 1 && !inString) found = true else depth -=1
+        case DoubleQuote if (!inEscape) =>
+          inString = !inString
+        case Backslash =>
+          inEscape = !inEscape
+        case _ =>
+          inEscape = false
+      }
+    }
+
+    if (found) (start, idx+1) else (-1, 0)
+  }
+
   sealed trait State
   case object INITIAL extends State
   case object RESULTS extends State
@@ -25,7 +87,7 @@ class Lexer {
 
   def offer(input: ByteString): Unit = buffer ++= input
 
-  def poll: Option[Neo4jToken] =
+  def poll: Option[Neo4jRespToken] =
     if (buffer.isEmpty) None else state match {
       case INITIAL =>
         Results.offer(buffer)
@@ -62,7 +124,7 @@ class Lexer {
         }
 
       case COLUMNS =>
-        val (col, remainder) = JsonObjectParser.array(buffer)
+        val (col, remainder) = array(buffer)
         buffer = remainder
         state = DATA
         Some(ResultColumn(col))
@@ -79,7 +141,7 @@ class Lexer {
         }
 
       case ROWS =>
-        val (row, remainder) = JsonObjectParser.obj(buffer)
+        val (row, remainder) = obj(buffer)
         buffer = remainder
         if (!row.isEmpty)
           Some(DataRow(row))
