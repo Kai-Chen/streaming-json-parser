@@ -3,7 +3,7 @@ package com.sorrentocorp.akka.stream
 import akka.util.ByteString
 import scala.util._
 
-/** TODO document */
+/** Tries to match a ByteString literal. */
 class Expect(val prefix: ByteString) {
   require(!prefix.isEmpty)
   val prefixLen = prefix.size
@@ -19,4 +19,8 @@ class Expect(val prefix: ByteString) {
       Some(Right(buffer.drop(prefixLen)))
     else
       Some(Left(buffer))
+}
+
+object Expect {
+  def apply(str: String) = new Expect(ByteString(str))
 }

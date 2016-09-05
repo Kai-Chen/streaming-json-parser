@@ -10,8 +10,8 @@ import scala.annotation.switch
 
 object JsonObjectParser {
 
-  final val SquareBraceStart = '['.toByte
-  final val SquareBraceEnd = ']'.toByte
+  final val OpenBracket = '['.toByte
+  final val CloseBracket = ']'.toByte
   final val CurlyBraceStart = '{'.toByte
   final val CurlyBraceEnd = '}'.toByte
   final val DoubleQuote = '"'.toByte
@@ -28,6 +28,36 @@ object JsonObjectParser {
   def isWhitespace(input: Byte): Boolean =
     Whitespace.contains(input)
 
+  /** Splits a ByteString at the first complete json array */
+  def array(buf: ByteString): (ByteString, ByteString) =
+    buf.splitAt(endOfArray(buf))
+
+  def endOfArray(buf: ByteString, startIndex: Int = 0): Int = {
+    var inArray = 0
+    var inString = false
+    var inEscape = false
+    var found = false
+
+    var idx = startIndex - 1
+    while (buf.isDefinedAt(idx + 1) && !found) {
+      idx += 1
+      buf(idx) match {
+        // no need to check for the char sequence '\' '[' as it is not legal in json
+        case OpenBracket if (!inString) =>
+          inArray += 1
+        case CloseBracket =>
+          if (inArray == 1 && !inString) found = true else inArray -=1
+        case DoubleQuote if (!inEscape) =>
+          inString = !inString
+        case Backslash =>
+          inEscape = !inEscape
+        case _ =>
+          inEscape = false
+      }
+    }
+
+    if (found) idx+1 else 0
+  }
 }
 
 /**
@@ -103,11 +133,11 @@ class JsonObjectParser(maximumObjectLength: Int = Int.MaxValue) {
   }
 
   private def proceed(input: Byte): Unit =
-    if (input == SquareBraceStart && outsideObject) {
+    if (input == OpenBracket && outsideObject) {
       // outer object is an array
       pos += 1
       trimFront += 1
-    } else if (input == SquareBraceEnd && outsideObject) {
+    } else if (input == CloseBracket && outsideObject) {
       // outer array completed!
       pos = -1
     } else if (input == Comma && outsideObject) {

@@ -43,8 +43,8 @@ object JsonFraming {
    */
   sealed trait State
   case object INITIAL extends State
-  case object MATCHED_OPEN_BRACE extends State
-  case object MATCHED_RESULT extends State
+  case object MATCHED_RESULTS extends State
+  case object MATCHED_DATA extends State
 
   def objectScanner(maximumObjectLength: Int): Flow[ByteString, ByteString, NotUsed] =
     Flow[ByteString].via(new SimpleLinearGraphStage[ByteString] {
@@ -53,7 +53,10 @@ object JsonFraming {
 
       override def createLogic(inheritedAttributes: Attributes) = new GraphStageLogic(shape) with InHandler with OutHandler {
         private var state: State = INITIAL
-        private val expect: Expect = new Expect(ByteString("""{"results":"""))
+
+        private val Results = Expect("""{"results":""")
+        private val EmptyArray = Expect("[]")
+        private val Columns = Expect("""[{"columns":""")
 
         private val buffer = new JsonObjectParser(maximumObjectLength)
 
@@ -64,7 +67,7 @@ object JsonFraming {
           val curr = grab(in)
 
           state match {
-            case INITIAL => expect.offer(curr)
+            case INITIAL => Results.offer(curr)
             case _ => buffer.offer(curr)
           }
 
@@ -88,14 +91,18 @@ object JsonFraming {
           println(s"state is $state")
           state match {
             case INITIAL =>
-              expect.poll match {
+              Results.poll match {
                 case None => pull(in)
                 case Some(Right(rest)) =>
-                  state = MATCHED_OPEN_BRACE
-                  buffer.offer(rest)
+                  state = MATCHED_RESULTS
+                  val (array, data) = JsonObjectParser.array(rest.drop(1))
+                  println(s"rest is ${rest.utf8String}")
+                  println(s"array is ${array.utf8String}")
+                  println(s"data is ${data.utf8String}")
+                  buffer.offer(data.drop(8))
                   tryPopBuffer()
                 case Some(Left(str)) =>
-                  throw new IllegalArgumentException(s"Expected ${expect.prefix.utf8String}, but found ${str.utf8String}")
+                  throw new IllegalArgumentException(s"Expected ${Results.prefix.utf8String}, but found ${str.utf8String}")
               }
             case _ =>
               try buffer.poll() match {
