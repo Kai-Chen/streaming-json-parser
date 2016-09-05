@@ -12,8 +12,8 @@ object JsonObjectParser {
 
   final val OpenBracket = '['.toByte
   final val CloseBracket = ']'.toByte
-  final val CurlyBraceStart = '{'.toByte
-  final val CurlyBraceEnd = '}'.toByte
+  final val OpenBrace = '{'.toByte
+  final val CloseBrace = '}'.toByte
   final val DoubleQuote = '"'.toByte
   final val Backslash = '\\'.toByte
   final val Comma = ','.toByte
@@ -33,7 +33,7 @@ object JsonObjectParser {
     buf.splitAt(endOfArray(buf))
 
   def endOfArray(buf: ByteString, startIndex: Int = 0): Int = {
-    var inArray = 0
+    var arrayDepth = 0
     var inString = false
     var inEscape = false
     var found = false
@@ -44,9 +44,9 @@ object JsonObjectParser {
       buf(idx) match {
         // no need to check for the char sequence '\' '[' as it is not legal in json
         case OpenBracket if (!inString) =>
-          inArray += 1
+          arrayDepth += 1
         case CloseBracket =>
-          if (inArray == 1 && !inString) found = true else inArray -=1
+          if (arrayDepth == 1 && !inString) found = true else arrayDepth -=1
         case DoubleQuote if (!inEscape) =>
           inString = !inString
         case Backslash =>
@@ -151,11 +151,11 @@ class JsonObjectParser(maximumObjectLength: Int = Int.MaxValue) {
       if (!isStartOfEscapeSequence) inStringExpression = !inStringExpression
       isStartOfEscapeSequence = false
       pos += 1
-    } else if (input == CurlyBraceStart && !inStringExpression) {
+    } else if (input == OpenBrace && !inStringExpression) {
       isStartOfEscapeSequence = false
       depth += 1
       pos += 1
-    } else if (input == CurlyBraceEnd && !inStringExpression) {
+    } else if (input == CloseBrace && !inStringExpression) {
       isStartOfEscapeSequence = false
       depth -= 1
       pos += 1
