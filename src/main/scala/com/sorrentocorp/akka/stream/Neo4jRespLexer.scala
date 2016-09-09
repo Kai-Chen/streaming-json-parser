@@ -4,77 +4,7 @@ import akka.util.ByteString
 
 /** A simple state machine to tokenize json response from neo4j server */
 class Neo4jRespLexer {
-  final val OpenBracket = '['.toByte
-  final val CloseBracket = ']'.toByte
-  final val OpenBrace = '{'.toByte
-  final val CloseBrace = '}'.toByte
-  final val DoubleQuote = '"'.toByte
-  final val Backslash = '\\'.toByte
-  final val Comma = ','.toByte
-
-  final val LineBreak = '\n'.toByte
-  final val LineBreak2 = '\r'.toByte
-  final val Tab = '\t'.toByte
-  final val Space = ' '.toByte
-
-  final val Whitespace = Set(LineBreak, LineBreak2, Tab, Space)
-
-  def isWhitespace(input: Byte): Boolean =
-    Whitespace.contains(input)
-
-  /** Splits a ByteString at the first complete json array */
-  def array(buf: ByteString): (ByteString, ByteString) =
-    split(buf, OpenBracket, CloseBracket)
-
-  def obj(buf: ByteString): (ByteString, ByteString) =
-    split(buf, OpenBrace, CloseBrace)
-
-  def split(buf: ByteString, open: Byte, close: Byte): (ByteString, ByteString) = {
-    val (start, end) = matching(buf, open, close)
-    if (start == -1)
-      (ByteString.empty, buf)
-    else
-      buf.drop(start).splitAt(end - start)
-  }
-
-  /** Return a pair of indices, indicating the start and the end of a complete json array or object */
-  def matching(buf: ByteString, open: Byte, close: Byte): (Int, Int) = {
-    var depth = 0
-    var inString = false
-    var inEscape = false
-    var found = false
-
-    var start = -1
-    var idx = -1
-    while (buf.isDefinedAt(idx + 1) && !found) {
-      idx += 1
-      buf(idx) match {
-        // no need to check for char sequence "\[" or "\{" as they are not legal in json
-        case `open` if (!inString) =>
-          start = idx
-          depth += 1
-        case `close` =>
-          if (depth == 1 && !inString) found = true else depth -=1
-        case DoubleQuote if (!inEscape) =>
-          inString = !inString
-        case Backslash =>
-          inEscape = !inEscape
-        case _ =>
-          inEscape = false
-      }
-    }
-
-    if (found) (start, idx+1) else (-1, 0)
-  }
-
-  sealed trait State
-  case object INITIAL extends State
-  case object RESULTS extends State
-  case object COLUMNS extends State
-  case object DATA extends State
-  case object ROWS extends State
-  case object END_ROWS extends State
-  case object ERRORS extends State
+  import Neo4jRespLexer._
 
   private val Results = Expect("""{"results":""")
   private val EmptyArray = Expect("[]")
@@ -174,6 +104,80 @@ class Neo4jRespLexer {
             Some(ErrorObj(err))
         }
     }
+}
+
+object Neo4jRespLexer {
+  final val OpenBracket = '['.toByte
+  final val CloseBracket = ']'.toByte
+  final val OpenBrace = '{'.toByte
+  final val CloseBrace = '}'.toByte
+  final val DoubleQuote = '"'.toByte
+  final val Backslash = '\\'.toByte
+  final val Comma = ','.toByte
+
+  final val LineBreak = '\n'.toByte
+  final val LineBreak2 = '\r'.toByte
+  final val Tab = '\t'.toByte
+  final val Space = ' '.toByte
+
+  final val Whitespace = Set(LineBreak, LineBreak2, Tab, Space)
+
+  def isWhitespace(input: Byte): Boolean =
+    Whitespace.contains(input)
+
+  /** Splits a ByteString at the first complete json array */
+  def array(buf: ByteString): (ByteString, ByteString) =
+    split(buf, OpenBracket, CloseBracket)
+
+  def obj(buf: ByteString): (ByteString, ByteString) =
+    split(buf, OpenBrace, CloseBrace)
+
+  def split(buf: ByteString, open: Byte, close: Byte): (ByteString, ByteString) = {
+    val (start, end) = matching(buf, open, close)
+    if (start == -1)
+      (ByteString.empty, buf)
+    else
+      buf.drop(start).splitAt(end - start)
+  }
+
+  /** Return a pair of indices, indicating the start and the end of a complete json array or object */
+  def matching(buf: ByteString, open: Byte, close: Byte): (Int, Int) = {
+    var depth = 0
+    var inString = false
+    var inEscape = false
+    var found = false
+
+    var start = -1
+    var idx = -1
+    while (buf.isDefinedAt(idx + 1) && !found) {
+      idx += 1
+      buf(idx) match {
+        // no need to check for char sequence "\[" or "\{" as they are not legal in json
+        case `open` if (!inString) =>
+          start = idx
+          depth += 1
+        case `close` =>
+          if (depth == 1 && !inString) found = true else depth -=1
+        case DoubleQuote if (!inEscape) =>
+          inString = !inString
+        case Backslash =>
+          inEscape = !inEscape
+        case _ =>
+          inEscape = false
+      }
+    }
+
+    if (found) (start, idx+1) else (-1, 0)
+  }
+
+  sealed trait State
+  case object INITIAL extends State
+  case object RESULTS extends State
+  case object COLUMNS extends State
+  case object DATA extends State
+  case object ROWS extends State
+  case object END_ROWS extends State
+  case object ERRORS extends State
 
   private def badToken(expect: Expect, input: ByteString) =
     throw new IllegalArgumentException(s"Expected [${expect.prefix.utf8String}] but found [${input.utf8String}]")
