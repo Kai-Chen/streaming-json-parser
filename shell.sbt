@@ -1,6 +1,7 @@
 initialCommands in console := """
 import akka.actor._
 import akka.stream._, scaladsl._
+import akka.util.ByteString
 import com.sorrentocorp.akka.stream._
 
 implicit val system = ActorSystem("example")

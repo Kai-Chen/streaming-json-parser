@@ -101,7 +101,7 @@ class Neo4jRespLexer {
           case Some(Right(remainder)) =>
             val (err, _) = array(remainder)
             buffer = ByteString.empty
-            Some(ErrorObj(err))
+            Some(if (err.length == 2) NoError else ErrorObj(err))
         }
     }
 }
@@ -154,7 +154,8 @@ object Neo4jRespLexer {
       buf(idx) match {
         // no need to check for char sequence "\[" or "\{" as they are not legal in json
         case `open` if (!inString) =>
-          start = idx
+          if (start == -1)
+            start = idx
           depth += 1
         case `close` =>
           if (depth == 1 && !inString) found = true else depth -=1

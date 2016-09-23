@@ -12,4 +12,5 @@ case class ResultColumn(meta: ByteString) extends Neo4jRespToken(meta)
 
 case class DataRow(row: ByteString) extends Neo4jRespToken(row)
 
+case object NoError extends Neo4jRespToken(ByteString.empty)
 case class ErrorObj(errors: ByteString) extends Neo4jRespToken(errors)
